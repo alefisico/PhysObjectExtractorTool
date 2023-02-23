@@ -3,27 +3,42 @@ import FWCore.Utilities.FileUtils as FileUtils
 import FWCore.PythonUtilities.LumiList as LumiList
 import FWCore.ParameterSet.Types as CfgTypes
 
-import os 
+import os
 import sys
 
 relBase = os.environ['CMSSW_BASE']
 
-#---- sys.argv takes the parameters given as input cmsRun PhysObjectExtractor/python/poet_cfg.py <isData (default=False)> <doPat (default=False)> 
-#----  e.g: cmsRun PhysObjectExtractor/python/poet_cfg.py True True
+from FWCore.ParameterSet.VarParsing import VarParsing
+
+
+options = VarParsing ('analysis')
+
+#---- sys.argv takes the parameters given as input cmsRun PhysObjectExtractor/python/poet_cfg.py <isData (default=False)> <doPat (default=False)>
+#----  e.g: cmsRun PhysObjectExtractor/python/poet_cfg.py isData=True doPat=True
 #---- NB the first two parameters are always "cmsRun" and the config file name
 #---- Work with data (if False, assumed MC simulations)
 #---- This needs to be in agreement with the input files/datasets below.
-if len(sys.argv) > 2:
-    isData = eval(sys.argv[2])
-else:
-    isData = False
 
-#---- Flag for using the Physics Analysis Toolkit for jets and MET
-if len(sys.argv) > 3:
-    doPat = eval(sys.argv[3])
-else:
-    doPat = False
+options.register('isData',
+		 False,
+                 VarParsing.multiplicity.singleton,
+                 VarParsing.varType.bool,
+                 "Flag for Data")
+options.register('doPat',
+		 False,
+                 VarParsing.multiplicity.singleton,
+                 VarParsing.varType.bool,
+                 "Flag for using the Physics Analysis Toolkit for jets and MET")
+options.register('inputTxtFile',
+		 '',
+                 VarParsing.multiplicity.singleton,
+                 VarParsing.varType.string,
+                 "File with input files")
 
+options.parseArguments()
+
+isData = options.isData
+doPat = options.doPat
 
 process = cms.Process("POET")
 
@@ -48,9 +63,9 @@ process.load("Configuration.StandardSequences.MagneticField_cff")
 #---- A local file, for testing, can be downloaded using, e.g., the cern open data client (https://cernopendata-client.readthedocs.io/en/latest/):
 #---- python cernopendata-client download-files --recid 6004 --filter-range 1-1
 #---- For running over larger number of files, comment out this section and use/uncomment the FileUtils infrastructure below
-if isData: 
+if isData:
 	sourceFile='root://eospublic.cern.ch//eos/opendata/cms/Run2012B/DoubleMuParked/AOD/22Jan2013-v1/10000/1EC938EF-ABEC-E211-94E0-90E6BA442F24.root'
-else: 
+else:
 	sourceFile='root://eospublic.cern.ch//eos/opendata/cms/MonteCarlo2012/Summer12_DR53X/TTbar_8TeV-Madspin_aMCatNLO-herwig/AODSIM/PU_S10_START53_V19-v2/00000/000A9D3F-CE4C-E311-84F8-001E673969D2.root'
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
@@ -61,6 +76,9 @@ process.source = cms.Source("PoolSource",
 
 #---- Alternatively, to run on larger scale, one could use index files as obtained from the Cern Open Data Portal
 #---- and pass them into the PoolSource.  The example is for 2012 data
+if options.inputTxtFile:
+    files = FileUtils.loadListFromFile(options.inputTxtFile)
+    process.source = cms.Source("PoolSource", fileNames=cms.untracked.vstring(*files))
 #files = FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_10000_file_index.txt")
 #files.extend(FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_20000_file_index.txt"))
 #files.extend(FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_20001_file_index.txt"))
@@ -68,8 +86,6 @@ process.source = cms.Source("PoolSource",
 #files.extend(FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_210000_file_index.txt"))
 #files.extend(FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_30000_file_index.txt"))
 #files.extend(FileUtils.loadListFromFile("data/CMS_Run2012B_DoubleMuParked_AOD_22Jan2013-v1_310000_file_index.txt"))
-#process.source = cms.Source(
-#    "PoolSource", fileNames=cms.untracked.vstring(*files))
 
 
 
@@ -103,7 +119,7 @@ if isData:
 #---- Configure the PhysObjectExtractor modules!
 
 #---- More information about InputCollections at https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideRecoDataTable
-process.myevents = cms.EDAnalyzer('EventAnalyzer')	                             
+process.myevents = cms.EDAnalyzer('EventAnalyzer')
 
 process.myelectrons = cms.EDAnalyzer('ElectronAnalyzer',
 				     InputCollection = cms.InputTag("gsfElectrons")
@@ -147,22 +163,22 @@ if doPat:
 	addJetCollection(process,cms.InputTag('ak5PFJets'),
 			 'AK5', 'PFCorr',
 			 doJTA        = True,
-			 doBTagging   = True, 
+			 doBTagging   = True,
 			 jetCorrLabel = ('AK5PF', cms.vstring(jetcorrlabels)),
 			 doType1MET   = True,
 			 doL1Cleaning = False,
 			 doL1Counters = False,
 			 doJetID      = True,
 			 jetIdLabel   = "ak5",
-			 ) 
- 
+			 )
+
 	#---- Configure the POET jet analyzer
 	#---- Don't forget to run jec_cfg.py to get these .txt files!
 	process.myjets= cms.EDAnalyzer('PatJetAnalyzer',
 				       InputCollection = cms.InputTag("selectedPatJetsAK5PFCorr"),
 				       isData = cms.bool(isData),
-				       jecUncName = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'Uncertainty_AK5PF.txt'), 
-				       jerResName = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/JetResolutionInputAK5PF.txt')         
+				       jecUncName = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'Uncertainty_AK5PF.txt'),
+				       jerResName = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/JetResolutionInputAK5PF.txt')
 				       )
 else:
 	if not isData:
@@ -177,12 +193,12 @@ else:
 	process.myjets= cms.EDAnalyzer('JetAnalyzer',
 				       InputCollection = cms.InputTag("ak5PFJets"),
 				       isData = cms.bool(isData),
-				       jecL1Name = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'L1FastJet_AK5PF.txt'), 
-				       jecL2Name = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'L2Relative_AK5PF.txt'),
-				       jecL3Name = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'L3Absolute_AK5PF.txt'),
-				       jecResName = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'L2L3Residual_AK5PF.txt'),
-				       jecUncName = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/'+JecString+'Uncertainty_AK5PF.txt'),
-				       jerResName = cms.FileInPath('PhysObjectExtractorTool/PhysObjectExtractor/JEC/JetResolutionInputAK5PF.txt')
+				       jecL1Name = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'L1FastJet_AK5PF.txt'),
+				       jecL2Name = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'L2Relative_AK5PF.txt'),
+				       jecL3Name = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'L3Absolute_AK5PF.txt'),
+				       jecResName = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'L2L3Residual_AK5PF.txt'),
+				       jecUncName = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/'+JecString+'Uncertainty_AK5PF.txt'),
+				       jerResName = cms.FileInPath('PhysObjectExtractor/PhysObjectExtractor/JEC/JetResolutionInputAK5PF.txt')
 				       )
 
 process.mymets= cms.EDAnalyzer('MetAnalyzer',
@@ -206,7 +222,7 @@ process.mytracks= cms.EDAnalyzer('TrackAnalyzer')
 process.mygenparticle= cms.EDAnalyzer('GenParticleAnalyzer',
 				      #---- Collect particles with specific "pdgid:status"
                                       #---- Check PDG ID in the PDG.
-				      #---- if 0:0, collect them all	
+				      #---- if 0:0, collect them all
 				      input_particle = cms.vstring("1:11","1:13","1:22","2:15")
 				      )
 
@@ -214,10 +230,10 @@ process.mytriggers = cms.EDAnalyzer('TriggerAnalyzer',
                               processName = cms.string("HLT"),
                               #---- These are example triggers for 2012
                               #---- Wildcards * and ? are accepted (with usual meanings)
-                               #---- If left empty, all triggers will run              
-                              triggerPatterns = cms.vstring("HLT_L2DoubleMu23_NoVertex_v*","HLT_Mu12_v*", "HLT_Photon20_CaloIdVL_v*", "HLT_Ele22_CaloIdL_CaloIsoVL_v*", "HLT_Jet370_NoJetID_v*"), 
+                               #---- If left empty, all triggers will run
+                              triggerPatterns = cms.vstring("HLT_L2DoubleMu23_NoVertex_v*","HLT_Mu12_v*", "HLT_Photon20_CaloIdVL_v*", "HLT_Ele22_CaloIdL_CaloIsoVL_v*", "HLT_Jet370_NoJetID_v*"),
                               triggerResults = cms.InputTag("TriggerResults","","HLT"),
-                              triggerEvent   = cms.InputTag("hltTriggerSummaryAOD","","HLT")                             
+                              triggerEvent   = cms.InputTag("hltTriggerSummaryAOD","","HLT")
                               )
 
 
@@ -249,12 +265,12 @@ process.mytriggers = cms.EDAnalyzer('TriggerAnalyzer',
 process.TFileService = cms.Service(
 	"TFileService", fileName=cms.string("myoutput.root"))
 
-#---- Finally run everything! 
+#---- Finally run everything!
 #---- Separation by * implies that processing order is important.
 #---- separation by + implies that any order will work
 #---- One can put in or take out the needed processes
 if doPat:
 	process.p = cms.Path(process.patDefaultSequence+process.myevents+process.myelectrons+process.mymuons+process.myphotons+process.myjets+process.mymets+process.mytaus+process.mytrigEvent+process.mypvertex+process.mytracks+process.mygenparticle+process.mytriggers)
-else: 
+else:
 	if isData: process.p = cms.Path(process.myevents+process.myelectrons+process.mymuons+process.myphotons+process.myjets+process.mymets+process.mytaus+process.mytrigEvent+process.mypvertex+process.mytracks+process.mygenparticle+process.mytriggers)
 	else: process.p = cms.Path(process.selectedHadronsAndPartons * process.jetFlavourInfosAK5PFJets * process.myevents+process.myelectrons+process.mymuons+process.myphotons+process.myjets+process.mymets+process.mytaus+process.mytrigEvent+process.mypvertex+process.mytracks+process.mygenparticle+process.mytriggers)
